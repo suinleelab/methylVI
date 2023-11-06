@@ -1,0 +1,14 @@
+# IDE
+.idea
+
+# Jupyter notebook
+.ipynb_checkpoints
+
+# Distribution
+*.egg-info
+
+# Python
+*__pycache__
+
+# OS
+*.DS_Store
