@@ -17,15 +17,16 @@ TensorDict = dict[str, torch.Tensor]
 
 class MethylVIModule(BaseModuleClass):
     """
-    Skeleton Variational auto-encoder model.
-
-    Here we implement a basic version of scVI's underlying VAE :cite:p:`Lopez18`.
-    This implementation is for instructional purposes only.
+    Pytorch module for methylVI.
 
     Parameters
     ----------
     n_input
-        Number of input genes
+        Total number of input genomic regions
+    modalities
+        Human-readable list of methylation modalities (e.g. ["mCG", "mCH"])
+    num_features_per_modality
+        Number of features corresponding to each modality
     n_batch
         Number of batches, if 0, no batch correction is performed.
     n_hidden
@@ -36,6 +37,16 @@ class MethylVIModule(BaseModuleClass):
         Number of hidden layers used for encoder and decoder NNs
     dropout_rate
         Dropout rate for neural networks
+    likelihood
+        One of
+        * ``'betabinomial'`` - BetaBinomial distribution
+        * ``'binomial'`` - Binomial distribution
+    dispersion
+        One of the following
+        * ``'gene'`` - dispersion parameter of BetaBinomial is constant per gene across cells
+        * ``'gene-batch'`` - dispersion can differ between different batches
+        * ``'gene-label'`` - dispersion can differ between different labels
+        * ``'gene-cell'`` - dispersion can differ for every gene in every cell
     """
 
     def __init__(
@@ -54,7 +65,7 @@ class MethylVIModule(BaseModuleClass):
         super().__init__()
         self.n_latent = n_latent
         self.n_batch = n_batch
-        # this is needed to comply with some requirement of the VAEMixin class
+
         self.latent_distribution = "normal"
         self.dispersion = dispersion
         self.likelihood = likelihood
@@ -66,7 +77,7 @@ class MethylVIModule(BaseModuleClass):
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_encoder = Encoder(
-            n_input * 2,
+            n_input * 2, # For each input region, we need to input both methylated counts and coverage --> x2
             n_latent,
             n_cat_list=cat_list,
             n_layers=n_layers,

@@ -35,10 +35,7 @@ logger = logging.getLogger(__name__)
 
 class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
     """
-    Skeleton for an scvi-tools model.
-
-    Please use this skeleton to create new models. This is a simple
-    implementation of the scVI model :cite:p:`Lopez18`.
+    Model class for methylVI
 
     Parameters
     ----------
@@ -51,15 +48,15 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
     n_layers
         Number of hidden layers used for encoder and decoder NNs.
     **model_kwargs
-        Keyword args for :class:`~mypackage.MyModule`
+        Keyword args for :class:`~MethylVIModule`
 
     Examples
     --------
-    >>> adata = anndata.read_h5ad(path_to_anndata)
-    >>> mypackage.MyModel.setup_anndata(adata, batch_key="batch")
-    >>> vae = mypackage.MyModel(adata)
+    >>> mdata = anndata.read_h5mu(path_to_mudata)
+    >>> MethylVI.setup_mudata(mdata, batch_key="batch")
+    >>> vae = MethylVI(adata)
     >>> vae.train()
-    >>> adata.obsm["X_mymodel"] = vae.get_latent_representation()
+    >>> mdata['mCG'].obsm["X_methylVI"] = vae.get_latent_representation()
     """
 
     def __init__(
@@ -173,7 +170,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
         methylation_modalities: dict[str, str] | None = None,
-        covariate_modalities: dict[str, str] | None = None,
+        covariate_modalities: dict[str, str] = {},
         **kwargs,
     ):
         """%(summary_mdata)s.
@@ -456,7 +453,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
         for modality in self.modalities:
             exprs[modality] = np.concatenate(exprs[modality], axis=cell_axis)
 
-        # Correct up to here
         zs = torch.concat(zs, dim=cell_axis)
 
         if n_samples_overall is not None:
@@ -493,7 +489,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
                     exprs_dfs[modality] = pd.DataFrame(
                         exprs[modality],
                         columns=adata[modality].var_names[gene_mask],
-                        # index=adata[modality].obs_names[indices],
+                        index=adata[modality].obs_names[indices],
                     )
                 return exprs_dfs
             else:
@@ -501,7 +497,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
                 return pd.DataFrame(
                     exprs,
                     columns=adata[modality].var_names[gene_mask],
-                    # index=adata[modality].obs_names[indices],
+                    index=adata[modality].obs_names[indices],
                 )
         else:
             if len(self.modalities) > 1:
