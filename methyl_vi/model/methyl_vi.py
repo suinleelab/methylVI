@@ -14,7 +14,8 @@ from anndata import AnnData
 from mudata import MuData
 from scvi import REGISTRY_KEYS, settings
 from scvi._types import Number
-from scvi.data import AnnDataManager, fields
+from scvi.data import AnnDataManager, _constants, fields
+from scvi.data._constants import _MODEL_NAME_KEY, _SETUP_ARGS_KEY
 from scvi.data.fields import (
     CategoricalJointObsField,
     CategoricalObsField,
@@ -22,18 +23,29 @@ from scvi.data.fields import (
     NumericalJointObsField,
 )
 from scvi.distributions._utils import DistributionConcatenator
-from scvi.model._utils import _get_batch_code_from_category
-from scvi.model.base import BaseModelClass, UnsupervisedTrainingMixin, VAEMixin
+from scvi.model._utils import _get_batch_code_from_category, parse_device_args
+from scvi.model.base import (
+    ArchesMixin,
+    BaseModelClass,
+    UnsupervisedTrainingMixin,
+    VAEMixin,
+)
+from scvi.model.base._archesmixin import _get_loaded_data, _set_params_online_update
+from scvi.model.base._utils import (
+    _de_core,
+    _initialize_model,
+    _validate_var_names,
+)
 from scvi.utils import setup_anndata_dsp
 
 from methyl_vi import METHYLVI_REGISTRY_KEYS
-from methyl_vi.model.utils import _de_core, scmc_raw_counts_properties
+from methyl_vi.model.utils import scmc_raw_counts_properties
 from methyl_vi.module.methyl_vi import MethylVIModule
 
 logger = logging.getLogger(__name__)
 
 
-class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
+class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelClass):
     """
     Model class for methylVI
 
@@ -170,7 +182,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
         methylation_modalities: dict[str, str] | None = None,
-        covariate_modalities: dict[str, str] = {},
+        covariate_modalities=None,
         **kwargs,
     ):
         """%(summary_mdata)s.
@@ -206,6 +218,8 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
         )
 
         """
+        if covariate_modalities is None:
+            covariate_modalities = {}
         setup_method_args = MethylVIModel._get_setup_method_args(**locals())
 
         if methylation_modalities is None:
@@ -477,6 +491,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
 
                 ind_ = np.random.choice(n_samples_, n_samples_overall, p=p, replace=True)
                 exprs[modality] = exprs[modality][ind_]
+                return_numpy = True
 
         elif n_samples > 1 and return_mean:
             for modality in self.modalities:
@@ -712,3 +727,134 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, BaseModelClass):
         )
 
         return result
+
+    @classmethod
+    def load_query_mdata(
+        cls,
+        mdata: MuData,
+        reference_model: Union[str, BaseModelClass],
+        inplace_subset_query_vars: bool = False,
+        accelerator: str = "auto",
+        device: Union[int, str] = "auto",
+        unfrozen: bool = False,
+        freeze_dropout: bool = False,
+        freeze_expression: bool = True,
+        freeze_decoder_first_layer: bool = True,
+        freeze_batchnorm_encoder: bool = True,
+        freeze_batchnorm_decoder: bool = False,
+        freeze_classifier: bool = True,
+    ):
+        """Online update of a reference model with scArches algorithm :cite:p:`Lotfollahi21`.
+
+        Parameters
+        ----------
+        adata
+            AnnData organized in the same way as data used to train model.
+            It is not necessary to run setup_anndata,
+            as AnnData is validated against the ``registry``.
+        reference_model
+            Either an already instantiated model of the same class, or a path to
+            saved outputs for reference model.
+        inplace_subset_query_vars
+            Whether to subset and rearrange query vars inplace based on vars used to
+            train reference model.
+        %(param_accelerator)s
+        %(param_device)s
+        unfrozen
+            Override all other freeze options for a fully unfrozen model
+        freeze_dropout
+            Whether to freeze dropout during training
+        freeze_expression
+            Freeze neurons corersponding to expression in first layer
+        freeze_decoder_first_layer
+            Freeze neurons corersponding to first layer in decoder
+        freeze_batchnorm_encoder
+            Whether to freeze batchnorm weight and bias during training for encoder
+        freeze_batchnorm_decoder
+            Whether to freeze batchnorm weight and bias during training for decoder
+        freeze_classifier
+            Whether to freeze classifier completely. Only applies to `SCANVI`.
+        """
+        _, _, device = parse_device_args(
+            accelerator=accelerator,
+            devices=device,
+            return_device="torch",
+            validate_single_device=True,
+        )
+
+        attr_dict, var_names, load_state_dict = _get_loaded_data(
+            reference_model, device=device
+        )
+
+        if inplace_subset_query_vars:
+            logger.debug("Subsetting query vars to reference vars.")
+            mdata._inplace_subset_var(var_names)
+        _validate_var_names(mdata, var_names)
+
+        registry = attr_dict.pop("registry_")
+        if _MODEL_NAME_KEY in registry and registry[_MODEL_NAME_KEY] != cls.__name__:
+            raise ValueError(
+                "It appears you are loading a model from a different class."
+            )
+
+        if _SETUP_ARGS_KEY not in registry:
+            raise ValueError(
+                "Saved model does not contain original setup inputs. "
+                "Cannot load the original setup."
+            )
+
+        cls.setup_mudata(
+            mdata,
+            source_registry=registry,
+            extend_categories=True,
+            allow_missing_labels=True,
+            **registry[_SETUP_ARGS_KEY],
+        )
+
+        model = _initialize_model(cls, mdata, attr_dict)
+        adata_manager = model.get_anndata_manager(mdata, required=True)
+
+        if REGISTRY_KEYS.CAT_COVS_KEY in adata_manager.data_registry:
+            raise NotImplementedError(
+                "scArches currently does not support models with extra categorical covariates."
+            )
+
+        version_split = adata_manager.registry[_constants._SCVI_VERSION_KEY].split(".")
+        if int(version_split[1]) < 8 and int(version_split[0]) == 0:
+            warnings.warn(
+                "Query integration should be performed using models trained with "
+                "version >= 0.8",
+                UserWarning,
+                stacklevel=settings.warnings_stacklevel,
+            )
+
+        model.to_device(device)
+
+        # model tweaking
+        new_state_dict = model.module.state_dict()
+        for key, load_ten in load_state_dict.items():
+            new_ten = new_state_dict[key]
+            if new_ten.size() == load_ten.size():
+                continue
+            # new categoricals changed size
+            else:
+                dim_diff = new_ten.size()[-1] - load_ten.size()[-1]
+                fixed_ten = torch.cat([load_ten, new_ten[..., -dim_diff:]], dim=-1)
+                load_state_dict[key] = fixed_ten
+
+        model.module.load_state_dict(load_state_dict)
+        model.module.eval()
+
+        _set_params_online_update(
+            model.module,
+            unfrozen=unfrozen,
+            freeze_decoder_first_layer=freeze_decoder_first_layer,
+            freeze_batchnorm_encoder=freeze_batchnorm_encoder,
+            freeze_batchnorm_decoder=freeze_batchnorm_decoder,
+            freeze_dropout=freeze_dropout,
+            freeze_expression=freeze_expression,
+            freeze_classifier=freeze_classifier,
+        )
+        model.is_trained_ = False
+
+        return model
