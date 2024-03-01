@@ -1,4 +1,6 @@
 """Model class for methylVI for single cell methylation data."""
+from __future__ import annotations
+
 import logging
 import warnings
 from collections import defaultdict
@@ -40,7 +42,7 @@ from scvi.utils import setup_anndata_dsp
 
 from methyl_vi import METHYLVI_REGISTRY_KEYS
 from methyl_vi.model.utils import scmc_raw_counts_properties
-from methyl_vi.module.methyl_vi import MethylVIModule
+from methyl_vi.module.methylvae import METHYLVAE
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +90,8 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         adata_manager = self.get_anndata_manager(adata)
 
         if type(adata) == AnnData:
-            self.modalities = []
+            self.modalities = ["mCG"]
+            self.num_features_per_modality = [adata.shape[1]]
             n_input = adata.layers["cov"].shape[1]
         else:
             self.modalities = [
@@ -101,7 +104,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             ]
             n_input = np.sum(self.num_features_per_modality)
 
-        self.module = MethylVIModule(
+        self.module = METHYLVAE(
             n_input=n_input,
             n_hidden=n_hidden,
             n_latent=n_latent,
@@ -685,9 +688,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             modality=modality,
         )
 
-        if mode != "vanilla":
-            raise NotImplementedError("Only vanilla DMG testing implemented for now")
-
         # TODO check if change_fn in kwargs and raise error if so
         def change_fn(a, b):
             return a - b
@@ -720,8 +720,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             delta=delta,
             batch_correction=batch_correction,
             fdr=fdr_target,
-            change_fn=change_fn,
-            m1_domain_fn=m1_domain_fn,
             silent=silent,
             **kwargs,
         )

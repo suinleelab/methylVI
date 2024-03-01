@@ -15,7 +15,7 @@ from methyl_vi.nn import DecoderMETHYLVI
 TensorDict = dict[str, torch.Tensor]
 
 
-class MethylVIModule(BaseModuleClass):
+class METHYLVAE(BaseModuleClass):
     """
     Pytorch module for methylVI.
 
@@ -77,13 +77,15 @@ class MethylVIModule(BaseModuleClass):
         # z encoder goes from the n_input-dimensional data to an n_latent-d
         # latent space representation
         self.z_encoder = Encoder(
-            n_input * 2, # For each input region, we need to input both methylated counts and coverage --> x2
+            n_input
+            * 2,  # For each input region, we need to input both methylated counts and coverage --> x2
             n_latent,
             n_cat_list=cat_list,
             n_layers=n_layers,
             n_hidden=n_hidden,
             dropout_rate=dropout_rate,
             return_dist=True,
+            var_activation=torch.nn.functional.softplus,  # Better numerical stability than exp
         )
 
         # decoder goes from n_latent-dimensional space to n_input-d data
@@ -101,23 +103,28 @@ class MethylVIModule(BaseModuleClass):
             pass
 
     def _get_methylation_features(self, tensors):
-        mc_keys = sorted(
-            [
-                x
-                for x in tensors.keys()
-                if x.endswith(f"_{METHYLVI_REGISTRY_KEYS.MC_KEY}")
-            ]
-        )
-        cov_keys = sorted(
-            [
-                x
-                for x in tensors.keys()
-                if x.endswith(f"_{METHYLVI_REGISTRY_KEYS.COV_KEY}")
-            ]
-        )
+        if len(self.modalities) > 1:
+            mc_keys = sorted(
+                [
+                    x
+                    for x in tensors.keys()
+                    if x.endswith(f"_{METHYLVI_REGISTRY_KEYS.MC_KEY}")
+                ]
+            )
+            cov_keys = sorted(
+                [
+                    x
+                    for x in tensors.keys()
+                    if x.endswith(f"_{METHYLVI_REGISTRY_KEYS.COV_KEY}")
+                ]
+            )
 
-        mc = torch.cat([tensors[x] for x in mc_keys], dim=1)
-        cov = torch.cat([tensors[x] for x in cov_keys], dim=1)
+            mc = torch.cat([tensors[x] for x in mc_keys], dim=1)
+            cov = torch.cat([tensors[x] for x in cov_keys], dim=1)
+
+        else:
+            mc = tensors["mc"]
+            cov = tensors["cov"]
 
         return mc, cov
 
@@ -138,11 +145,15 @@ class MethylVIModule(BaseModuleClass):
         return tensor_by_modality
 
     def _get_methylation_features(self, tensors):
-        mc_keys = [f"{x}_mc" for x in self.modalities]
-        cov_keys = [f"{x}_cov" for x in self.modalities]
+        if len(self.modalities) > 1:
+            mc_keys = [f"{x}_mc" for x in self.modalities]
+            cov_keys = [f"{x}_cov" for x in self.modalities]
 
-        mc = torch.cat([tensors[x] for x in mc_keys], dim=1)
-        cov = torch.cat([tensors[x] for x in cov_keys], dim=1)
+            mc = torch.cat([tensors[x] for x in mc_keys], dim=1)
+            cov = torch.cat([tensors[x] for x in cov_keys], dim=1)
+        else:
+            mc = tensors["mc"]
+            cov = tensors["cov"]
 
         return mc, cov
 
