@@ -1,4 +1,5 @@
 """Model class for methylVI for single cell methylation data."""
+
 from __future__ import annotations
 
 import logging
@@ -19,10 +20,8 @@ from scvi._types import Number
 from scvi.data import AnnDataManager, _constants, fields
 from scvi.data._constants import _MODEL_NAME_KEY, _SETUP_ARGS_KEY
 from scvi.data.fields import (
-    CategoricalJointObsField,
     CategoricalObsField,
     LayerField,
-    NumericalJointObsField,
 )
 from scvi.distributions._utils import DistributionConcatenator
 from scvi.model._utils import _get_batch_code_from_category, parse_device_args
@@ -95,9 +94,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             n_input = adata.layers["cov"].shape[1]
         else:
             self.modalities = [
-                x.split("_")[0]
-                for x in adata_manager.data_registry.keys()
-                if x.endswith("cov")
+                x.split("_")[0] for x in adata_manager.data_registry.keys() if x.endswith("cov")
             ]
             self.num_features_per_modality = [
                 adata[modality].shape[1] for modality in self.modalities
@@ -114,7 +111,9 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             num_features_per_modality=self.num_features_per_modality,
             **model_kwargs,
         )
-        self._model_summary_string = "Overwrite this attribute to get an informative representation for your model"
+        self._model_summary_string = (
+            "Overwrite this attribute to get an informative representation for your model"
+        )
         # necessary line to get params that will be used for saving/loading
         self.init_params_ = self._get_init_params(locals())
 
@@ -129,8 +128,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         cov_layer: str,
         batch_key: Optional[str] = None,
         labels_key: Optional[str] = None,
-        categorical_covariate_keys: Optional[list[str]] = None,
-        continuous_covariate_keys: Optional[list[str]] = None,
         **kwargs,
     ) -> Optional[AnnData]:
         """
@@ -142,8 +139,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         %(param_batch_key)s
         %(param_labels_key)s
         %(param_layer)s
-        %(param_cat_cov_keys)s
-        %(param_cont_cov_keys)s
 
         Returns
         -------
@@ -160,16 +155,8 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         anndata_fields = anndata_fields + [
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
             CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
-            CategoricalJointObsField(
-                REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys
-            ),
-            NumericalJointObsField(
-                REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys
-            ),
         ]
-        adata_manager = AnnDataManager(
-            fields=anndata_fields, setup_method_args=setup_method_args
-        )
+        adata_manager = AnnDataManager(fields=anndata_fields, setup_method_args=setup_method_args)
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
 
@@ -182,8 +169,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         cov_layer: str,
         batch_key: str | None = None,
         size_factor_key: str | None = None,
-        categorical_covariate_keys: list[str] | None = None,
-        continuous_covariate_keys: list[str] | None = None,
         methylation_modalities: dict[str, str] | None = None,
         covariate_modalities=None,
         **kwargs,
@@ -199,8 +184,6 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             Layer containing total coverage counts for each methylation modality.
         %(param_batch_key)s
         %(param_size_factor_key)s
-        %(param_cat_cov_keys)s
-        %(param_cont_cov_keys)s
         %(param_methylation_modalities)s
         %(param_covariate_modalities)s
 
@@ -262,26 +245,8 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
                 )
             )
 
-        mudata_fields = (
-            mc_fields
-            + cov_fields
-            + [
-                batch_field,
-                fields.MuDataCategoricalJointObsField(
-                    REGISTRY_KEYS.CAT_COVS_KEY,
-                    categorical_covariate_keys,
-                    mod_key=covariate_modalities_.categorical_covariate_keys,
-                ),
-                fields.MuDataNumericalJointObsField(
-                    REGISTRY_KEYS.CONT_COVS_KEY,
-                    continuous_covariate_keys,
-                    mod_key=covariate_modalities_.continuous_covariate_keys,
-                ),
-            ]
-        )
-        adata_manager = AnnDataManager(
-            fields=mudata_fields, setup_method_args=setup_method_args
-        )
+        mudata_fields = mc_fields + cov_fields + [batch_field]
+        adata_manager = AnnDataManager(fields=mudata_fields, setup_method_args=setup_method_args)
         adata_manager.register_fields(mdata, **kwargs)
         cls.register_manager(adata_manager)
 
@@ -384,11 +349,12 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         return_mean
             Whether to return the mean of the samples.
         return_numpy
-            Return a :class:`~numpy.ndarray` instead of a :class:`~pandas.DataFrame`. DataFrame includes
-            gene names as columns. If either `n_samples=1` or `return_mean=True`, defaults to `False`.
-            Otherwise, it defaults to `True`.
+            Return a :class:`~numpy.ndarray` instead of a :class:`~pandas.DataFrame`.
+            DataFrame includes gene names as columns. If either `n_samples=1` or
+            `return_mean=True`, defaults to `False`. Otherwise, it defaults to `True`.
         importance_weighting_kwargs
-            Keyword arguments passed into :meth:`~scvi.model.base.RNASeqMixin._get_importance_weights`.
+            Keyword arguments passed into
+            :meth:`~scvi.model.base.RNASeqMixin._get_importance_weights`.
 
         Returns
         -------
@@ -407,9 +373,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         if n_samples_overall is not None:
             assert n_samples == 1  # default value
             n_samples = n_samples_overall // len(indices) + 1
-        scdl = self._make_data_loader(
-            adata=adata, indices=indices, batch_size=batch_size
-        )
+        scdl = self._make_data_loader(adata=adata, indices=indices, batch_size=batch_size)
 
         transform_batch = _get_batch_code_from_category(
             self.get_anndata_manager(adata, required=True), transform_batch
@@ -430,7 +394,8 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         store_distributions = weights == "importance"
         if store_distributions and len(transform_batch) > 1:
             raise NotImplementedError(
-                "Importance weights cannot be computed when expression levels are averaged across batches."
+                "Importance weights cannot be computed when expression "
+                "levels are averaged across batches."
             )
 
         exprs = defaultdict(list)
@@ -440,7 +405,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         for tensors in scdl:
             per_batch_exprs = defaultdict(list)
             for _ in transform_batch:
-                generative_kwargs = {}  # TODO: might need to implement this at some point. See scvi-tools repo
+                generative_kwargs = {}  # TODO: implement this at some point.
                 inference_kwargs = {"n_samples": n_samples}
                 inference_outputs, generative_outputs = self.module.forward(
                     tensors=tensors,
@@ -539,7 +504,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         return_numpy: Optional[bool] = None,
         **importance_weighting_kwargs,
     ) -> Union[(np.ndarray | pd.DataFrame), dict[str, np.ndarray | pd.DataFrame]]:
-        r"""Returns the normalized (decoded) methylation expression for a specific modality (e.g. mCG, mCH).
+        r"""Returns normalized methylation expression for a specific modality (e.g. mCG, mCH).
 
         This is denoted as :math:`\mu_n` in the methylVI paper.
 
@@ -575,11 +540,12 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         return_mean
             Whether to return the mean of the samples.
         return_numpy
-            Return a :class:`~numpy.ndarray` instead of a :class:`~pandas.DataFrame`. DataFrame includes
-            gene names as columns. If either `n_samples=1` or `return_mean=True`, defaults to `False`.
-            Otherwise, it defaults to `True`.
+            Return a :class:`~numpy.ndarray` instead of a :class:`~pandas.DataFrame`.
+            DataFrame includes gene names as columns. If either `n_samples=1` or
+            `return_mean=True`, defaults to `False`. Otherwise, it defaults to `True`.
         importance_weighting_kwargs
-            Keyword arguments passed into :meth:`~scvi.model.base.RNASeqMixin._get_importance_weights`.
+            Keyword arguments passed into
+            :meth:`~scvi.model.base.RNASeqMixin._get_importance_weights`.
 
         Returns
         -------
@@ -661,15 +627,16 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
         prob_da
             the probability of the region being differentially accessible
         is_da_fdr
-            whether the region passes a multiple hypothesis correction procedure with the target_fdr
-            threshold
+            whether the region passes a multiple hypothesis correction procedure
+            with the target_fdr threshold
         bayes_factor
             Bayes Factor indicating the level of significance of the analysis
         effect_size
-            the effect size, computed as (accessibility in population 2) - (accessibility in population 1)
+            the effect size, computed as (accessibility in population 2) -
+            (accessibility in population 1)
         emp_effect
-            the empirical effect, based on observed detection rates instead of the estimated accessibility
-            scores from the PeakVI model
+            the empirical effect, based on observed detection rates instead of the estimated
+            accessibility scores from the PeakVI model
         est_prob1
             the estimated probability of accessibility in population 1
         est_prob2
@@ -780,9 +747,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
             validate_single_device=True,
         )
 
-        attr_dict, var_names, load_state_dict = _get_loaded_data(
-            reference_model, device=device
-        )
+        attr_dict, var_names, load_state_dict = _get_loaded_data(reference_model, device=device)
 
         if inplace_subset_query_vars:
             logger.debug("Subsetting query vars to reference vars.")
@@ -791,9 +756,7 @@ class MethylVIModel(VAEMixin, UnsupervisedTrainingMixin, ArchesMixin, BaseModelC
 
         registry = attr_dict.pop("registry_")
         if _MODEL_NAME_KEY in registry and registry[_MODEL_NAME_KEY] != cls.__name__:
-            raise ValueError(
-                "It appears you are loading a model from a different class."
-            )
+            raise ValueError("It appears you are loading a model from a different class.")
 
         if _SETUP_ARGS_KEY not in registry:
             raise ValueError(

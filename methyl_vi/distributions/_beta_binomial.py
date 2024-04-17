@@ -2,8 +2,11 @@ from typing import Optional
 
 import torch
 from pyro.distributions import BetaBinomial as BetaBinomialDistribution
+from scvi.distributions._constraints import optional_constraint
 from torch.distributions import constraints
 from torch.distributions.utils import broadcast_all
+
+from ._constraints import open_interval
 
 
 class BetaBinomial(BetaBinomialDistribution):
@@ -15,6 +18,13 @@ class BetaBinomial(BetaBinomialDistribution):
     the beta distribution and total_counts is the number of trials. (2), (`mu`, `gamma`,
     `total_counts`) parameterization, which is the one used by methylVI. These
     parameters respectively control the mean and dispersion of the distribution.
+
+    In the (`mu`, `gamma`) parameterization, samples from the beta-binomial are generated
+    as follows:
+
+    1. :math:`p_i \sim \textrm{Beta}(\mu_i, \gamma_i)`
+    2. :math:`y_i \sim \textrm{Ber}(p_i)`
+    3. :math:`y = \sum_{i}y_i`
 
     Parameters
     ----------
@@ -30,7 +40,16 @@ class BetaBinomial(BetaBinomialDistribution):
         Dispersion.
     validate_args
         Raise ValueError if arguments do not match constraints
+    eps
+        Numerical stability constant
     """
+
+    arg_constraints = {
+        "alpha": optional_constraint(constraints.greater_than(0)),
+        "beta": optional_constraint(constraints.greater_than(0)),
+        "mu": optional_constraint(open_interval(0, 1)),
+        "gamma": optional_constraint(open_interval(0, 1)),
+    }
 
     support = constraints.nonnegative_integer
 
@@ -42,30 +61,32 @@ class BetaBinomial(BetaBinomialDistribution):
         mu: Optional[torch.Tensor] = None,
         gamma: Optional[torch.Tensor] = None,
         validate_args: bool = False,
+        eps: float = 1e-8,
     ):
-        self._eps = 1e-8
-        if (mu is None) == (alpha is None):
-            raise ValueError(
-                "Please use one of the two possible parameterizations. Refer to the documentation for more information."
-            )
+        self._eps = eps
 
         using_param_1 = alpha is not None and beta is not None
+        using_param_2 = mu is not None and gamma is not None
+
+        if (not using_param_1) and (not using_param_2):
+            raise ValueError(
+                "Please use one of the two possible parameterizations. "
+                "Refer to the documentation for more information."
+            )
 
         if using_param_1:
             alpha, beta = broadcast_all(alpha, beta)
         else:
             mu, gamma = broadcast_all(mu, gamma)
-            mu = torch.clamp(mu, min=self._eps)
-            gamma = torch.clamp(gamma, min=self._eps)  # To avoid divide by 0 issues
 
             alpha = mu * (1 - gamma) / gamma
-            beta = (1 - mu) * (1 - gamma) / gamma
+            beta = (mu - 1) * (gamma - 1) / gamma
 
-            # Due to numerical stability issues, sometimes alpha or beta will end up
-            # as exact zeros, so we clamp at a small positive number epsilon
-            alpha = torch.clamp(alpha, min=self._eps)
-            beta = torch.clamp(beta, min=self._eps)
+            alpha = torch.nn.functional.softplus(alpha) + self._eps
+            beta = torch.nn.functional.softplus(beta) + self._eps
 
+        self.mu = mu
+        self.gamma = gamma
         self.alpha = alpha
         self.beta = beta
 
