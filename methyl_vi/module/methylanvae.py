@@ -166,9 +166,7 @@ class METHYLANVAE(METHYLVAE):
             requires_grad=False,
         )
         self.use_labels_groups = use_labels_groups
-        self.labels_groups = (
-            np.array(labels_groups) if labels_groups is not None else None
-        )
+        self.labels_groups = np.array(labels_groups) if labels_groups is not None else None
         if self.use_labels_groups:
             if labels_groups is None:
                 raise ValueError("Specify label groups")
@@ -238,9 +236,7 @@ class METHYLANVAE(METHYLVAE):
             w_y = torch.zeros_like(unw_y)
             for i, group_index in enumerate(self.groups_index):
                 unw_y_g = unw_y[:, group_index]
-                w_y[:, group_index] = unw_y_g / (
-                    unw_y_g.sum(dim=-1, keepdim=True) + 1e-8
-                )
+                w_y[:, group_index] = unw_y_g / (unw_y_g.sum(dim=-1, keepdim=True) + 1e-8)
                 w_y[:, group_index] *= w_g[:, [i]]
         else:
             w_y = self.classifier(z)
@@ -248,18 +244,11 @@ class METHYLANVAE(METHYLVAE):
 
     @auto_move_data
     def classification_loss(self, labelled_dataset):
+        """Computes scANVI-style classification loss."""
         mc, cov = self._get_methylation_features(labelled_dataset)  # (n_obs, n_vars)
         y = labelled_dataset[REGISTRY_KEYS.LABELS_KEY]  # (n_obs, 1)
         batch_idx = labelled_dataset[REGISTRY_KEYS.BATCH_KEY]
-        cont_key = REGISTRY_KEYS.CONT_COVS_KEY
-        cont_covs = (
-            labelled_dataset[cont_key] if cont_key in labelled_dataset.keys() else None
-        )
 
-        cat_key = REGISTRY_KEYS.CAT_COVS_KEY
-        cat_covs = (
-            labelled_dataset[cat_key] if cat_key in labelled_dataset.keys() else None
-        )
         # NOTE: prior to v1.1, this method returned probabilities per label by
         # default, see #2301 for more details
         logits = self.classify(
@@ -289,12 +278,8 @@ class METHYLANVAE(METHYLVAE):
         px_mu = generative_outputs["px_mu"]
         px_gamma = generative_outputs["px_gamma"]
 
-        px_mu = torch.concatenate(
-            [px_mu[modality] for modality in self.modalities], dim=1
-        )
-        px_gamma = torch.concatenate(
-            [px_gamma[modality] for modality in self.modalities], dim=1
-        )
+        px_mu = torch.concatenate([px_mu[modality] for modality in self.modalities], dim=1)
+        px_gamma = torch.concatenate([px_gamma[modality] for modality in self.modalities], dim=1)
 
         if self.dispersion == "gene":
             px_gamma = torch.sigmoid(self.px_gamma)
@@ -306,8 +291,6 @@ class METHYLANVAE(METHYLVAE):
 
         qz1 = inference_outputs["qz"]
         z1 = inference_outputs["z"]
-        labelled_tensors[REGISTRY_KEYS.X_KEY] = z1
-        batch_index = tensors[REGISTRY_KEYS.BATCH_KEY]
 
         if feed_labels:
             y = tensors[REGISTRY_KEYS.LABELS_KEY]
@@ -345,9 +328,7 @@ class METHYLANVAE(METHYLVAE):
                     true_labels=true_labels,
                     logits=logits,
                     extra_metrics={
-                        "n_labelled_tensors": labelled_tensors[
-                            REGISTRY_KEYS.X_KEY
-                        ].shape[0],
+                        "n_labelled_tensors": labelled_tensors[REGISTRY_KEYS.X_KEY].shape[0],
                     },
                 )
             return LossOutput(
@@ -384,11 +365,10 @@ class METHYLANVAE(METHYLVAE):
                 true_labels=true_labels,
                 logits=logits,
             )
-        return LossOutput(
-            loss=loss, reconstruction_loss=reconst_loss, kl_local=kl_divergence
-        )
+        return LossOutput(loss=loss, reconstruction_loss=reconst_loss, kl_local=kl_divergence)
 
     def on_load(self, model: BaseModelClass):
+        """Backwards compatibility fixes."""
         manager = model.get_anndata_manager(model.adata, required=True)
         source_version = manager._source_registry[_constants._SCVI_VERSION_KEY]
         version_split = source_version.split(".")
