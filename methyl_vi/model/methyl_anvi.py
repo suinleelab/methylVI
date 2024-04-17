@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 import warnings
 from collections.abc import Sequence
-from typing import Literal, Union
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 import torch
 from anndata import AnnData
-from muon import MuData
+from mudata import MuData
 from scvi import REGISTRY_KEYS, settings
 from scvi.data import AnnDataManager, _constants, fields
 from scvi.data._constants import _MODEL_NAME_KEY, _SETUP_ARGS_KEY
@@ -555,7 +555,7 @@ class MethylANVI(VAEMixin, ArchesMixin, BaseModelClass):
     def load_query_mdata(
         cls,
         mdata: MuData,
-        reference_model: Union[str, BaseModelClass],
+        reference_model: str | BaseModelClass,
         inplace_subset_query_vars: bool = False,
         accelerator: str = "auto",
         device: int | str = "auto",
