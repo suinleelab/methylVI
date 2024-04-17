@@ -69,7 +69,6 @@ ignore = [
     "D203",
     # We want docstrings to start immediately after the opening triple quote
     "D213",
-    "UP007",
 ]
 
 [tool.ruff.lint.pydocstyle]
