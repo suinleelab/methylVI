@@ -26,8 +26,9 @@ Installation should take no more than 5 minutes.
 
 * Embed high-dimensional methylation profiles into a lower-dimensional latent space.
 * Produced denoised methylation profiles ([demo notebook](https://colab.research.google.com/drive/18Srw6PfAEbbe36tOjcP2XSca5OOxBFlS?usp=sharing)). 
-* Integrate data collected in different experimental conditions (e.g. with different sequencing platforms, at different time points, etc.) ([demo notebook](https://colab.research.google.com/drive/1SO-b4z_7LFvcYMDRPBvvUUxwbtj77o32?usp=sharing)). 
-* (Coming soon) Perform differentially methylated region testing.
+* Integrate data collected in different experimental conditions (e.g. with different sequencing platforms, at different time points, etc.) ([demo notebook](https://colab.research.google.com/drive/1SO-b4z_7LFvcYMDRPBvvUUxwbtj77o32?usp=sharing)).
+* Transfer cell type labels between datasets using a semi-supervised learning ([demo notebook](https://colab.research.google.com/drive/1fAb7kvY_4olDTYc3anJ4RvQ0n7iR4Bfe?usp=sharing))
+* Map newly collected query datasets to previously assembled reference atlases ([demo notebook](https://colab.research.google.com/drive/1Y8UKAJgcHpHHeWxLWcL22w27s4Y7AGjS?usp=sharing))
 
 
 ### References
